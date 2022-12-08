@@ -1,0 +1,3 @@
+> **Note:** This project emerged from the final assignment of *High Performance Computing* course and was out of pure personal interest, thus containing astoundingly immature implementation that works even slower than the sequential version.
+
+An attempt to parallelize [Pattern-Defeating Quicksort (Orson Peters, 2021)](https://github.com/orlp/pdqsort) using Intel® oneAPI toolkit with support of C++23 features including `concept`s and `std::ranges`. The C++ implementation is based on that of `std::slice::sort_unstable` written in Rust. The project is still in early progress.
