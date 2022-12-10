@@ -1,9 +1,9 @@
+#include <CL/sycl.hpp>
 #include <format>
 #include <iostream>
 #include <random>
 #include <ranges>
 #include <vector>
-#include <CL/sycl.hpp>
 
 #include "./util.cpp"
 #include "dpc_common.hpp"
@@ -20,8 +20,7 @@ namespace rng = std::ranges;
 auto constexpr& _ = std::ignore;
 
 /**
- * \brief Shift `end` to left within [begin, end] until it meets a smaller/equal
- * element.
+ * \brief Shift `end` to left within [begin, end] until it meets a smaller/equal element.
  * \tparam It Iterator.
  */
 template <std::forward_iterator It>
@@ -47,8 +46,7 @@ constexpr void _sort_left_shift(It begin, It end) {
 }
 
 /**
- * \brief Shift `begin` to right within [begin, end] until it meets a
- * greater/equal element.
+ * \brief Shift `begin` to right within [begin, end] until it meets a greater/equal element.
  * \tparam It Iterator.
  */
 template <std::forward_iterator It>
@@ -90,7 +88,7 @@ constexpr void heap_sort(R& v) {
 int static n_threads = -1;
 
 /**
- * \brief PDQ-sort on oneAPI TBB.
+ * \brief Parallel PDQ-sort on oneAPI TBB.
  * \tparam T - Data type
  * \tparam _It - Iterator type
  * \param tasks - A TBB task group.
@@ -126,8 +124,8 @@ void _tbb_pdqsort(tbb::task_group& tasks,
     if (!balanced) {
       /// Shuffle elements around the possible pivot, hopefully breaking patterns.
       auto break_patterns = [len, ip, ib] {
-        if (len < 8)
-          [[unlikely]] return;
+        if (len < 8) [[unlikely]]
+          return;
         auto static dist = std::uniform_int_distribution<size_t>(0, std::numeric_limits<size_t>::max());
 
         for (auto i = -1; i <= 1; ++i) {
@@ -140,8 +138,7 @@ void _tbb_pdqsort(tbb::task_group& tasks,
     }
 
     auto maybe_sorted = true;
-    /// Choose pivot using median-of-medians, and return whether the slice may
-    /// have been sorted.
+    /// Choose pivot using median-of-medians, and return whether the slice may have been sorted.
     auto choose_pivot = [len, l4, ib, ie, &maybe_sorted, &ip] {
       size_t constexpr SHORTEST_MEDIAN_OF_MEDIANS = 50;
       size_t constexpr MAX_SWAPS = 4 * 3;
@@ -162,16 +159,16 @@ void _tbb_pdqsort(tbb::task_group& tasks,
         sort3(ip1, ip, ip3);
       }
 
-      if (n_swap < MAX_SWAPS) { maybe_sorted = (n_swap == 0); }
-      else {
+      if (n_swap < MAX_SWAPS) {
+        maybe_sorted = (n_swap == 0);
+      } else {
         std::reverse(ib, ie);
         ip = ie - 1 - l4 * 2;
       }
     };
     choose_pivot();
     if (balanced && partitioned && maybe_sorted) {
-      /// Try identifying out-of-order elements and shifting them to correct
-      /// positions.
+      /// Try identifying out-of-order elements and shifting them to correct positions.
       auto partial_ins_sort = [len, ib, ie]() -> bool /*wholly_sorted*/ {
         // max iterations of sort
         uint8_t constexpr MAX_STEPS = 5;
@@ -201,8 +198,7 @@ void _tbb_pdqsort(tbb::task_group& tasks,
       }
     }
 
-    // If predecessor pivot == chosen pivot, then it's already the
-    // smallest element.
+    // If predecessor pivot == chosen pivot, then it's already the smallest element.
     if (pred.has_value() && pred.value() >= *ip) {
       /// Bipartite `v` into elements == and > the pivot.
       auto partition_equal = [ib, ie, ip]() mutable {
@@ -251,8 +247,7 @@ void _tbb_pdqsort(tbb::task_group& tasks,
     if (mid_pos < len - mid_pos - 1) {
       tasks.run([=, &tasks] { _tbb_pdqsort<_It, T>(tasks, { ib, mid, mid_pos }, limit, pred, balanced, partitioned); });
       v = { mid + 1, ie }, pred = { *mid };
-    }
-    else {
+    } else {
       tasks.run([=, &tasks] { _tbb_pdqsort<_It, T>(tasks, { mid + 1, ie }, limit, { *mid }, balanced, partitioned); });
       v = { ib, mid, mid_pos };
     }
@@ -305,8 +300,7 @@ void parallel_pdqsort_demo(R& arr) {
                              rng::equal(usm_arr, sorted) ? "Yes!" : "No?");
 
     arr.assign_range(usm_arr);
-  }
-  catch (exception const& e) {
+  } catch (exception const& e) {
     std::cerr << "An error happened: " << e.what() << std::endl;
     std::terminate();
   }
