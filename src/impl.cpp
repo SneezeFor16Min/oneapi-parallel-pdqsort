@@ -92,8 +92,8 @@ int static n_threads = -1;
 /**
  * \brief PDQ-sort on oneAPI TBB.
  * \tparam T - Data type
- * \tparam R - Container type
  * \tparam _It - Iterator type
+ * \param tasks - A TBB task group.
  * \param v - A range of data.
  * \param limit - Number of imbalanced partitions before switching to `heap_sort`.
  * \param pred - Predecessor pivot.
@@ -101,12 +101,12 @@ int static n_threads = -1;
  * \param partitioned - `true` if the last partition didn't shuffle elements (the slice was already partitioned).
  */
 template <std::random_access_iterator _It, class T = std::iter_value_t<_It>>
-void _tbb_pdqsort(rng::subrange<_It>&& v,
+void _tbb_pdqsort(tbb::task_group& tasks,
+                  rng::subrange<_It>&& v,
                   uint8_t limit,
                   std::optional<T> pred = {},
                   bool balanced = true,
                   bool partitioned = true) {
-  tbb::task_group tasks;
   for (;;) {
     size_t const len = rng::size(v);
     size_t constexpr INS_SORT_LEN = 20;
@@ -249,23 +249,23 @@ void _tbb_pdqsort(rng::subrange<_It>&& v,
     partitioned = true;  // TODO
 
     if (mid_pos < len - mid_pos - 1) {
-      tasks.run([=] { _tbb_pdqsort<_It, T>({ ib, mid, mid_pos }, limit, pred, balanced, partitioned); });
+      tasks.run([=, &tasks] { _tbb_pdqsort<_It, T>(tasks, { ib, mid, mid_pos }, limit, pred, balanced, partitioned); });
       v = { mid + 1, ie }, pred = { *mid };
     }
     else {
-      tasks.run([=] { _tbb_pdqsort<_It, T>({ mid + 1, ie }, limit, { *mid }, balanced, partitioned); });
+      tasks.run([=, &tasks] { _tbb_pdqsort<_It, T>(tasks, { mid + 1, ie }, limit, { *mid }, balanced, partitioned); });
       v = { ib, mid, mid_pos };
     }
   }
-  tasks.wait();
 }
 
-template <rng::range R>
+template <rng::random_access_range R>
 void parallel_pdqsort(R& v) {
-  _tbb_pdqsort<rng::iterator_t<R>, rng::range_value_t<R>>(rng::subrange{ v }, d0::log2(rng::size(v)) + 1U);
+  tbb::task_group tasks;
+  tasks.run_and_wait([&] { _tbb_pdqsort(tasks, rng::subrange{ v }, d0::log2(rng::size(v)) + 1U); });
 }
 
-template <rng::range R>
+template <rng::random_access_range R>
 void parallel_pdqsort_demo(R& arr) {
   using T = rng::range_value_t<R>;
   size_t const len = rng::size(arr);
