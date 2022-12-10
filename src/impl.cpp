@@ -74,7 +74,7 @@ template <rng::forward_range R>
 constexpr void ins_sort(R& v) {
   using _It = rng::iterator_t<R>;
   _It const ib = rng::begin(v), ie = rng::end(v);
-  if (ib != ie)
+  if (ib != ie) [[likely]]
     for (_It i = ib + 1; i != ie; ++i)
       _sort_left_shift(ib, i);
 }
@@ -95,12 +95,16 @@ int static n_threads = -1;
  * \param v - A range of data.
  * \param limit - Number of imbalanced partitions before switching to `heap_sort`.
  * \param pred - Predecessor pivot.
+ * \param balanced - `true` if the last partition was reasonably balanced.
+ * \param partitioned - `true` if the last partition didn't shuffle elements (the slice was already partitioned).
  */
 template <std::random_access_iterator _It, class T = std::iter_value_t<_It>>
-void _tbb_pdqsort(tbb::task_group& tasks, rng::subrange<_It>&& v, uint8_t limit, std::optional<T> pred = {}) {
-  // balanced - `true` if the last partition was reasonably balanced.
-  // partitioned - `true` if the last partition didn't shuffle elements (the slice was already partitioned).
-  bool balanced{ true }, partitioned{ true };
+void _tbb_pdqsort(tbb::task_group& tasks,
+                  rng::subrange<_It>&& v,
+                  uint8_t limit,
+                  std::optional<T> pred = {},
+                  bool balanced = true,
+                  bool partitioned = true) {
   for (;;) {
     size_t const len = rng::size(v);
     size_t constexpr INS_SORT_LEN = 20;
@@ -211,27 +215,25 @@ void _tbb_pdqsort(tbb::task_group& tasks, rng::subrange<_It>&& v, uint8_t limit,
     }
 
     // If predecessor pivot == chosen pivot, then it's already the smallest element.
-    if (pred.has_value()) [[likely]] {
-      if (pred.value() >= *ip) {
-        /// Bipartite `v` into elements == and > the pivot.
-        auto partition_equal = [ib, ie, ip]() mutable {
-          std::iter_swap(ib, ip);
-          ip = ib;
-          _It l = ++ib, r = ie;
-          for (;;) {
-            while (l != r && *l <= *ip)
-              ++l;
-            while (l != r && *ip < *(r - 1))
-              --r;
-            if (l == r)
-              return --l;
-            std::iter_swap(l++, --r);
-          }
-        };
-        _It mid = partition_equal();
-        v = { mid, ie };
-        continue;
-      }
+    if (pred.has_value() && pred.value() >= *ip) {
+      /// Bipartite `v` into elements == and > the pivot.
+      auto partition_equal = [ib, ie, ip]() mutable {
+        std::iter_swap(ib, ip);
+        ip = ib;
+        _It l = ++ib, r = ie;
+        for (;;) {
+          while (l != r && *l <= *ip)
+            ++l;
+          while (l != r && *ip < *(r - 1))
+            --r;
+          if (l == r)
+            return --l;
+          std::iter_swap(l++, --r);
+        }
+      };
+      _It mid = partition_equal();
+      v = { mid, ie };
+      continue;
     }
 
     /// Bipartite `v` into elements <= and > the pivot.
@@ -258,12 +260,11 @@ void _tbb_pdqsort(tbb::task_group& tasks, rng::subrange<_It>&& v, uint8_t limit,
     balanced = std::min(mid_pos, len - mid_pos) >= len / 8;
     partitioned = true;  // TODO
 
-    pred = { *mid };
     if (mid_pos >= len - mid_pos - 1) {
-      tasks.run([=, &tasks] { _tbb_pdqsort<_It, T>(tasks, { ib, mid, mid_pos }, limit, pred); });
-      v = { mid + 1, ie };
+      tasks.run([=, &tasks] { _tbb_pdqsort<_It, T>(tasks, { ib, mid, mid_pos }, limit, pred, balanced, partitioned); });
+      v = { mid + 1, ie }, pred = { *mid };
     } else {
-      tasks.run([=, &tasks] { _tbb_pdqsort<_It, T>(tasks, { mid + 1, ie }, limit, pred); });
+      tasks.run([=, &tasks] { _tbb_pdqsort<_It, T>(tasks, { mid + 1, ie }, limit, { *mid }, balanced, partitioned); });
       v = { ib, mid, mid_pos };
     }
   }
