@@ -26,8 +26,24 @@ auto constexpr& _ = std::ignore;
  */
 template <std::forward_iterator It>
 constexpr void _sort_left_shift(It begin, It end) {
+  It j = end;
+  while (j != begin && *end < *(j - 1))
+    --j;
+  if (j == end)
+    return;
+  std::iter_value_t<It> tmp{ std::move(*end) };
+  for (It k = end; k != j; --k)
+    *k = std::move(*(k - 1));
+  *j = std::move(tmp);
+
+  /*
+  A more modernized version would be like this:
+  ```
   It const iu = rng::upper_bound(begin, end, *end);
   _ = rng::rotate(iu, end, end + 1);
+  ```
+  However for short arrays this is slower than iterator-based implementation above.
+  */
 }
 
 /**
@@ -37,8 +53,23 @@ constexpr void _sort_left_shift(It begin, It end) {
  */
 template <std::forward_iterator It>
 constexpr void _sort_right_shift(It begin, It end) {
+  It j = begin;
+  while (j != end && *(j + 1) < *begin)
+    ++j;
+  if (j == begin)
+    return;
+  std::iter_value_t<It> tmp{ std::move(*begin) };
+  for (It k = begin; k != j; ++k)
+    *k = std::move(*(k + 1));
+  *j = std::move(tmp);
+  /*
+  A more modernized version would be like this:
+  ```
   It const il = rng::lower_bound(begin + 1, end + 1, *end);
   _ = rng::rotate(begin, begin, il + 1);
+  ```
+  However for short arrays this is slower than iterator-based implementation above.
+  */
 }
 
 template <rng::forward_range R>
