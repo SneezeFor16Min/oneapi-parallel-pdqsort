@@ -24,7 +24,7 @@ auto constexpr& _ = std::ignore;
  * element.
  * \tparam It Iterator.
  */
-template <std::permutable It>
+template <std::forward_iterator It>
 constexpr void _sort_left_shift(It begin, It end) {
   It const iu = rng::upper_bound(begin, end, *end);
   _ = rng::rotate(iu, end, end + 1);
@@ -35,14 +35,15 @@ constexpr void _sort_left_shift(It begin, It end) {
  * greater/equal element.
  * \tparam It Iterator.
  */
-template <std::permutable It>
+template <std::forward_iterator It>
 constexpr void _sort_right_shift(It begin, It end) {
   It const il = rng::lower_bound(begin + 1, end + 1, *end);
   _ = rng::rotate(begin, begin, il + 1);
 }
 
-template <rng::range R, std::sortable _It = rng::iterator_t<R>>
+template <rng::forward_range R>
 constexpr void ins_sort(R& v) {
+  using _It = rng::iterator_t<R>;
   _It const ib = rng::begin(v), ie = rng::end(v);
   if (ib != ie)
     for (_It i = ib + 1; i != ie; ++i)
@@ -50,7 +51,6 @@ constexpr void ins_sort(R& v) {
 }
 
 template <rng::random_access_range R>
-  requires std::sortable<rng::iterator_t<R>>
 constexpr void heap_sort(R& v) {
   rng::make_heap(v);
   rng::sort_heap(v);
@@ -69,7 +69,7 @@ int static n_threads = -1;
  * \param balanced - `true` if the last partition was reasonably balanced.
  * \param partitioned - `true` if the last partition didn't shuffle elements (the slice was already partitioned).
  */
-template <class T = int, rng::range R = std::vector<T>, std::sortable _It = rng::iterator_t<R>>
+template <std::random_access_iterator _It, class T = std::iter_value_t<_It>>
 void _tbb_pdqsort(rng::subrange<_It>&& v,
                   uint8_t limit,
                   std::optional<T> pred = {},
@@ -218,22 +218,26 @@ void _tbb_pdqsort(rng::subrange<_It>&& v,
     partitioned = true;  // TODO
 
     if (mid_pos < len - mid_pos - 1) {
-      tasks.run([=] { _tbb_pdqsort({ ib, mid }, limit, pred, balanced, partitioned); });
+      tasks.run([=] { _tbb_pdqsort<_It, T>({ ib, mid, mid_pos }, limit, pred, balanced, partitioned); });
       v = { mid + 1, ie }, pred = { *mid };
     }
     else {
-      tasks.run([=] { _tbb_pdqsort({ mid + 1, ie }, limit, { *mid }, balanced, partitioned); });
-      v = { ib, mid };
+      tasks.run([=] { _tbb_pdqsort<_It, T>({ mid + 1, ie }, limit, { *mid }, balanced, partitioned); });
+      v = { ib, mid, mid_pos };
     }
   }
   tasks.wait();
 }
 
-template <class T = int, rng::range R = std::vector<T>>
-  requires std::sortable<rng::iterator_t<R>>
-void parallel_pdqsort(R& arr) {
+template <rng::range R>
+void parallel_pdqsort(R& v) {
+  _tbb_pdqsort<rng::iterator_t<R>, rng::range_value_t<R>>(rng::subrange{ v }, d0::log2(rng::size(v)) + 1U);
+}
+
+template <rng::range R>
+void parallel_pdqsort_demo(R& arr) {
+  using T = rng::range_value_t<R>;
   size_t const len = rng::size(arr);
-  uint8_t const limit = d0::log2(len) + 1;
   std::cout << std::format("Array size: {}", len) << std::endl;
 
   try {
@@ -261,7 +265,7 @@ void parallel_pdqsort(R& arr) {
     arena.execute([&] {
       std::cout << "Start pdqsort... ";
       auto const t0 = tbb::tick_count::now();
-      _tbb_pdqsort({ usm_arr }, limit);
+      parallel_pdqsort(usm_arr);
       auto const t1 = tbb::tick_count::now();
       std::cout << "Complete\n";
       std::cout << std::format("Time usage for pdqsort: {} sec\n", (t1 - t0).seconds());
@@ -283,7 +287,7 @@ int main(int argc, char* argv[]) {
   while (std::cout << "Enter data size: ", std::cin >> len) {
     auto v = util::generate_vec(len, util::GenMode::Random);
     util::print(v);
-    impl::parallel_pdqsort(v);
+    impl::parallel_pdqsort_demo(v);
     util::print(v);
     std::cout << "====================" << std::endl;
   }
