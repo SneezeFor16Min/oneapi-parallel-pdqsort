@@ -124,13 +124,29 @@ void _tbb_pdqsort(tbb::task_group& tasks,
     if (!balanced) {
       /// Shuffle elements around the possible pivot, hopefully breaking patterns.
       auto break_patterns = [len, ip, ib] {
-        if (len < 8) [[unlikely]]
-          return;
-        auto static dist = std::uniform_int_distribution<size_t>(0, std::numeric_limits<size_t>::max());
+        if (len >= 8) [[likely]] {
+          auto gen_usize = [](uint32_t seed) constexpr -> size_t {
+            auto gen_u32 = [seed]() mutable {
+              seed ^= seed << 13;
+              seed ^= seed >> 17;
+              seed ^= seed << 5;
+              return seed;
+            };
+            if constexpr (sizeof(size_t) <= 4) {
+              return gen_u32();
+            } else {
+              return ((uint64_t)gen_u32() << 32) | (uint64_t)gen_u32();
+            }
+          };
 
-        for (auto i = -1; i <= 1; ++i) {
-          size_t const other = dist(gen) % len;
-          std::iter_swap(ip + i, ib + other);
+          size_t seed = len;
+          size_t const modulus = 1 << (d0::log2(len) + 1);
+          for (int i = -1; i <= 1; ++i) {
+            seed = gen_usize(seed);
+            size_t other = seed & (modulus - 1);
+            other = other >= len ? other - len : other;
+            std::iter_swap(ip + i, ib + other);
+          }
         }
       };
       break_patterns();
