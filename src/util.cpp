@@ -1,10 +1,11 @@
-﻿#include <iostream>
+﻿#ifndef _PDQ_UTIL
+#define _PDQ_UTIL
+
+#include <iostream>
 #include <format>
 #include <ranges>
 #include <random>
 #include <numeric>
-
-auto static gen = std::mt19937{ std::random_device{}() };
 
 namespace util
 {
@@ -18,22 +19,27 @@ void print(R const& r) {
   size_t const len = rng::size(r);
   std::cout << "[ ";
   if (len > 2 * n) {
-    for (auto const& e : r | sv::take(n)) { std::cout << e << ' '; }
+    for (auto const& e : r | sv::take(n))
+      std::cout << e << ' ';
     std::cout << std::format("..<{} items>.. ", len - 2 * n);
-    for (auto const& e : r | sv::reverse | sv::take(n) | sv::reverse) { std::cout << e << ' '; }
+    for (auto const& e : r | sv::reverse | sv::take(n) | sv::reverse)
+      std::cout << e << ' ';
+  } else {
+    for (auto const& e : r)
+      std::cout << e << ' ';
   }
-  else { for (auto const& e : r) { std::cout << e << ' '; } }
   std::cout << "]" << std::endl;
 }
 
 enum class GenMode { Random, Sorted, RevSorted };
 
-template <class T = int32_t>
+template <class T = size_t>
 auto generate_vec(size_t const len, GenMode const mode = GenMode::Random) {
   std::vector<T> v(len);
   switch (mode) {
     case GenMode::Random: {
       auto dist = std::uniform_int_distribution<T>(1, len);
+      auto gen = std::mt19937{ std::random_device{}() };
       rng::generate(v, [&] { return dist(gen); });
       break;
     }
@@ -48,4 +54,6 @@ auto generate_vec(size_t const len, GenMode const mode = GenMode::Random) {
   }
   return v;
 }
-}
+}  // namespace util
+
+#endif
