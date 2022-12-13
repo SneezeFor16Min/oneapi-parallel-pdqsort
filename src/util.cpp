@@ -31,6 +31,19 @@ void print(R const& r) {
   std::cout << "]" << std::endl;
 }
 
+template <class T>
+struct stat_result {
+  T min, max;
+  double avg;
+};
+
+template <rng::range R, class T = rng::range_value_t<R>>
+constexpr stat_result<T> stat(R const& r) {
+  auto const minmax = rng::minmax_element(r);
+  double const avg = std::accumulate(rng::cbegin(r), rng::cend(r), 0.0) / rng::size(r);
+  return { .min = *minmax.min, .max = *minmax.max, .avg = avg };
+}
+
 enum class GenMode { Random, Sorted, RevSorted };
 
 template <class T = size_t>
@@ -54,6 +67,7 @@ auto generate_vec(size_t const len, GenMode const mode = GenMode::Random) {
   }
   return v;
 }
+
 }  // namespace util
 
 #endif
