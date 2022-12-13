@@ -60,35 +60,36 @@ constexpr void _sort_right_shift(It first, It last) {
 template <rng::forward_range R>
   requires rng::common_range<R>
 constexpr void ins_sort(R& v) {
-  using _It = rng::iterator_t<R>;
-  _It const ib = rng::begin(v), ie = rng::end(v);
+  using It = rng::iterator_t<R>;
+  It const ib = rng::begin(v), ie = rng::end(v);
   if (ib != ie) [[likely]]
-    for (_It i = ib + 1; i != ie; ++i)
+    for (It i = ib + 1; i != ie; ++i)
       _sort_left_shift(ib, i);
 }
 
 template <rng::random_access_range R>
+  requires rng::common_range<R>
 constexpr void heap_sort(R& v) {
   rng::make_heap(v);
   rng::sort_heap(v);
 }
 
 /**
- * \brief Parallel PDQ-sort on oneAPI TBB.
- * \tparam T - Data type
- * \tparam _It - Iterator type
- * \param tasks - A TBB task group.
- * \param v - A range of data.
- * \param limit - Number of imbalanced partitions before switching to `heap_sort`.
- * \param pred - Predecessor pivot.
- * \param balanced - `true` if the last partition was reasonably balanced.
- * \param partitioned - `true` if the last partition didn't shuffle elements (the slice was already partitioned).
+ * @brief Parallel pattern-defeating quick-sort on Intel oneAPI TBB.
+ * @tparam It Iterator type
+ * @param [in,out] tasks A TBB task group.
+ * @param [in,out] v A range of data.
+ * @param [in] limit Number of imbalanced partitions before switching to \c heap_sort.
+ * @param [in] pred Predecessor pivot.
+ * @param [in] balanced \c true iff the last partition was reasonably balanced.
+ * @param [in] partitioned \c true iff the last partition didn't shuffle elements (i.e., the slice was already
+ * partitioned).
  */
-template <std::random_access_iterator _It, class T = std::iter_value_t<_It>>
+template <std::random_access_iterator It>
 void _tbb_pdqsort(tbb::task_group& tasks,
-                  rng::subrange<_It>&& v,
+                  rng::subrange<It>&& v,
                   uint8_t limit,
-                  std::optional<T> pred = {},
+                  std::optional<std::iter_value_t<It>> pred = {},
                   bool balanced = true,
                   bool partitioned = true) {
   for (;;) {
@@ -104,35 +105,34 @@ void _tbb_pdqsort(tbb::task_group& tasks,
       break;
     }
 
-    _It ib = rng::begin(v), ie = rng::end(v);
+    It ib = rng::begin(v), ie = rng::end(v);
+
     size_t const l4 = len / 4;
-    _It ip = ib + l4 * 2;
+    It ip = ib + l4 * 2;
     if (!balanced) {
       /// Shuffle elements around the possible pivot, hopefully breaking patterns.
       auto break_patterns = [len, ip, ib] {
-        if (len >= 8) [[likely]] {
-          auto gen_usize = [](uint32_t seed) constexpr -> size_t {
-            auto gen_u32 = [seed]() mutable {
-              seed ^= seed << 13;
-              seed ^= seed >> 17;
-              seed ^= seed << 5;
-              return seed;
-            };
-            if constexpr (sizeof(size_t) <= 4) {
-              return gen_u32();
-            } else {
-              return ((uint64_t)gen_u32() << 32) | (uint64_t)gen_u32();
-            }
+        auto gen_usize = [](uint32_t seed) constexpr -> size_t {
+          auto gen_u32 = [seed]() mutable {
+            seed ^= seed << 13;
+            seed ^= seed >> 17;
+            seed ^= seed << 5;
+            return seed;
           };
-
-          size_t seed = len;
-          size_t const modulus = std::bit_ceil(len);
-          for (int i = -1; i <= 1; ++i) {
-            seed = gen_usize(seed);
-            size_t other = seed & (modulus - 1);
-            other = other >= len ? other - len : other;
-            std::iter_swap(ip + i, ib + other);
+          if constexpr (sizeof(size_t) <= 4) {
+            return gen_u32();
+          } else {
+            return ((uint64_t)gen_u32() << 32) | (uint64_t)gen_u32();
           }
+        };
+
+        size_t seed = len;
+        size_t const modulus = std::bit_ceil(len);
+        for (int i = -1; i <= 1; ++i) {
+          seed = gen_usize(seed);
+          size_t other = seed & (modulus - 1);
+          other = other >= len ? other - len : other;
+          std::iter_swap(ip + i, ib + other);
         }
       };
       break_patterns();
@@ -145,17 +145,17 @@ void _tbb_pdqsort(tbb::task_group& tasks,
       size_t constexpr SHORTEST_MEDIAN_OF_MEDIANS = 50;
       size_t constexpr MAX_SWAPS = 4 * 3;
       size_t n_swap = 0;
-      _It const ip1 = ip - l4, ip3 = ip + l4;
-      if (len >= 8) {
-        auto sort2 = [&n_swap](_It a, _It b) {
+      It const ip1 = ip - l4, ip3 = ip + l4;
+      {
+        auto sort2 = [&n_swap](It a, It b) {
           if (*b < *a) {
             std::iter_swap(a, b);
             ++n_swap;
           }
         };
-        auto sort3 = [&sort2](_It a, _It b, _It c) { sort2(a, b), sort2(b, c), sort2(a, b); };
+        auto sort3 = [&sort2](It a, It b, It c) { sort2(a, b), sort2(b, c), sort2(a, b); };
         if (len >= SHORTEST_MEDIAN_OF_MEDIANS) {
-          auto sort_around = [&sort3](_It a) { sort3(a - 1, a, a + 1); };
+          auto sort_around = [&sort3](It a) { sort3(a - 1, a, a + 1); };
           sort_around(ip1), sort_around(ip), sort_around(ip3);
         }
         sort3(ip1, ip, ip3);
@@ -207,7 +207,7 @@ void _tbb_pdqsort(tbb::task_group& tasks,
       auto partition_equal = [ib, ie, ip]() mutable {
         std::iter_swap(ib, ip);
         ip = ib;
-        _It l = ++ib, r = ie;
+        It l = ++ib, r = ie;
         for (;;) {
           while (l != r && *l <= *ip)
             ++l;
@@ -218,7 +218,7 @@ void _tbb_pdqsort(tbb::task_group& tasks,
           std::iter_swap(l++, --r);
         }
       };
-      _It mid = partition_equal();
+      It mid = partition_equal();
       v = { mid, ie };
       continue;
     }
@@ -227,7 +227,7 @@ void _tbb_pdqsort(tbb::task_group& tasks,
     auto partition = [ib, ie, ip]() mutable {
       std::iter_swap(ib, ip);
       ip = ib;
-      _It l = ++ib, r = ie;
+      It l = ++ib, r = ie;
       // TODO: implement block partitioning
       for (;;) {
         while (l != r && *l <= *ip)
@@ -242,16 +242,16 @@ void _tbb_pdqsort(tbb::task_group& tasks,
       std::iter_swap(ip, --l);
       return l;
     };
-    _It const mid = partition();
+    It const mid = partition();
     size_t const mid_pos = std::distance(ib, mid);
-    balanced = std::min(mid_pos, len - mid_pos) >= len / 8;
+    balanced = std::min(mid_pos, len - mid_pos) >= l4 / 2;
     partitioned = true;  // TODO
 
     if (mid_pos >= len - mid_pos - 1) {
-      tasks.run([=, &tasks] { _tbb_pdqsort<_It, T>(tasks, { ib, mid, mid_pos }, limit, pred, balanced, partitioned); });
+      tasks.run([=, &tasks] { _tbb_pdqsort(tasks, { ib, mid, mid_pos }, limit, pred, balanced, partitioned); });
       v = { mid + 1, ie }, pred = { *mid };
     } else {
-      tasks.run([=, &tasks] { _tbb_pdqsort<_It, T>(tasks, { mid + 1, ie }, limit, { *mid }, balanced, partitioned); });
+      tasks.run([=, &tasks] { _tbb_pdqsort(tasks, { mid + 1, ie }, limit, { *mid }, balanced, partitioned); });
       v = { ib, mid, mid_pos };
     }
   }
