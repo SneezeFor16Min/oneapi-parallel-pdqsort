@@ -55,6 +55,30 @@ constexpr void _sort_right_shift(It first, It last) {
     *j1 = std::move(tmp);
   }
 }
+
+/**
+ * @brief Insertion sort on [\c begin, \c end) partially allowing limited shifts.
+ * @tparam It Iterator.
+ * @pre \c begin < \c end.
+ */
+template <std::bidirectional_iterator It>
+constexpr bool _partial_ins_sort(It begin, It end) {
+  uint8_t constexpr MAX_SHIFTS = 8;
+  uint8_t limit = MAX_SHIFTS;
+  It i = begin;
+  for (++i; i != end; ++i) {
+    It j1 = i, j2 = i;
+    if (*j1 < *--j2) {
+      std::iter_value_t<It> tmp{ std::move(*j1) };
+      do {
+        *j1 = std::move(*j2);
+      } while (--limit && --j1 != begin && tmp < *--j2);
+      *j1 = std::move(tmp);
+    }
+    if (limit == 0)
+      return false;
+  }
+  return true;
 }
 
 template <rng::forward_range R>
@@ -171,32 +195,7 @@ void _tbb_pdqsort(tbb::task_group& tasks,
     };
     choose_pivot();
     if (balanced && partitioned && maybe_sorted) {
-      /// Try identifying out-of-order elements and shifting them to correct positions.
-      auto partial_ins_sort = [len, ib, ie]() -> bool /*wholly_sorted*/ {
-        // max iterations of sort
-        uint8_t constexpr MAX_STEPS = 5;
-        // shortest len for sort
-        size_t constexpr SHORTEST_SHIFTING_LEN = 50;
-        _It it = ib + 1;
-        for (uint8_t i = 0; i < MAX_STEPS; ++i) {
-          // count adjacent out-of-order pairs
-          while (it != ie && *(it - 1) <= *it)
-            ++it;
-          // reach end, which means all sorted
-          if (it == ie)
-            return true;
-          // don't sort if too short
-          if (len < SHORTEST_SHIFTING_LEN)
-            return false;
-
-          // shift `it-1`,`it`,`it+1`
-          std::iter_swap(it - 1, it);
-          _sort_left_shift(ib, it - 1);
-          _sort_right_shift(it + 1, ie - 1);
-        }
-        return false;
-      };
-      if (partial_ins_sort()) {
+      if (_partial_ins_sort(ib, ip) && _partial_ins_sort(ip + 1, ie)) {
         break;  // `v` is sorted!
       }
     }
