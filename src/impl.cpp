@@ -13,57 +13,52 @@ using namespace sycl;
 namespace rng = std::ranges;
 
 /**
- * \brief Shift `end` to left within [begin, end] until it meets a smaller/equal element.
- * \tparam It Iterator.
+ * @brief Shifts \c last to left within [\c first, \c last] until it meets a smaller/equal element.
+ * @pre \c first < \c last.
+ * @remark A more modernized version would be like this:
+ * \code{.cpp}
+ * It const iu = rng::upper_bound(first, last, *last);
+ * rng::rotate(iu, last, last + 1);
+ * \endcode
+ * However, for short arrays this is slower than the low-level implementation.
  */
-template <std::forward_iterator It>
-constexpr void _sort_left_shift(It begin, It end) {
-  It j = end;
-  while (j != begin && *end < *(j - 1))
-    --j;
-  if (j == end)
-    return;
-  std::iter_value_t<It> tmp{ std::move(*end) };
-  for (It k = end; k != j; --k)
-    *k = std::move(*(k - 1));
-  *j = std::move(tmp);
-
-  /*
-  A more modernized version would be like this:
-  ```
-  It const iu = rng::upper_bound(begin, end, *end);
-  _ = rng::rotate(iu, end, end + 1);
-  ```
-  However for short arrays this is slower than iterator-based implementation above.
-  */
+template <std::bidirectional_iterator It>
+constexpr void _sort_left_shift(It first, It last) {
+  It j1 = last, j2 = last;
+  if (*j1 < *--j2) {
+    std::iter_value_t<It> tmp = std::move(*j1);
+    do {
+      *j1 = std::move(*j2);
+    } while (--j1 != first && tmp < *--j2);
+    *j1 = std::move(tmp);
+  }
 }
 
 /**
- * \brief Shift `begin` to right within [begin, end] until it meets a greater/equal element.
- * \tparam It Iterator.
+ * @brief Shifts \c first to right within [\c first, \c last] until it meets a greater/equal element.
+ * @pre \c first < \c last.
+ * @remark A more modernized version would be like this:
+ * \code{.cpp}
+ * It const il = rng::lower_bound(first + 1, last + 1, *first)
+ * rng::rotate(first, first, il + 1);
+ * \endcode
+ * However, for short arrays this is slower.
  */
 template <std::forward_iterator It>
-constexpr void _sort_right_shift(It begin, It end) {
-  It j = begin;
-  while (j != end && *(j + 1) < *begin)
-    ++j;
-  if (j == begin)
-    return;
-  std::iter_value_t<It> tmp{ std::move(*begin) };
-  for (It k = begin; k != j; ++k)
-    *k = std::move(*(k + 1));
-  *j = std::move(tmp);
-  /*
-  A more modernized version would be like this:
-  ```
-  It const il = rng::lower_bound(begin + 1, end + 1, *end);
-  _ = rng::rotate(begin, begin, il + 1);
-  ```
-  However for short arrays this is slower than iterator-based implementation above.
-  */
+constexpr void _sort_right_shift(It first, It last) {
+  It j1 = first, j2 = first;
+  if (*++j2 < *j1) {
+    std::iter_value_t<It> tmp = std::move(*j1);
+    do {
+      *j1 = std::move(*j2);
+    } while (++j1 != last && *++j2 < tmp);
+    *j1 = std::move(tmp);
+  }
+}
 }
 
 template <rng::forward_range R>
+  requires rng::common_range<R>
 constexpr void ins_sort(R& v) {
   using _It = rng::iterator_t<R>;
   _It const ib = rng::begin(v), ie = rng::end(v);
@@ -98,7 +93,7 @@ void _tbb_pdqsort(tbb::task_group& tasks,
                   bool partitioned = true) {
   for (;;) {
     size_t const len = rng::size(v);
-    size_t constexpr INS_SORT_LEN = 20;
+    size_t constexpr INS_SORT_LEN = 16;
     if (len <= INS_SORT_LEN) {
       ins_sort(v);
       break;
