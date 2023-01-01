@@ -1,4 +1,4 @@
-> **Note:** This project emerged from the final assignment of *High Performance Computing* course and was out of pure personal interest. PRs are welcomed.
+> **Note:** This project emerged from the final assignment of *High Performance Computing* course and was out of pure personal interest, thus containing astoundingly immature implementation. PRs are welcomed.
 
 A parallelized implementation of [Pattern-Defeating Quicksort (Orson Peters, 2021)](https://github.com/orlp/pdqsort) using Intel® oneAPI toolkit with support of C++20 features including `std::ranges` and `concept`s. This C++ implementation is based on that of Rust's `std::slice::sort_unstable` and Boost's `sort::pdqsort`. The project is still in progress.
 

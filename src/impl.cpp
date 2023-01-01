@@ -107,7 +107,7 @@ constexpr void heap_sort(R& v) {
  * @param [in] pred Predecessor pivot.
  * @param [in] balanced \c true iff the last partition was reasonably balanced.
  * @param [in] partitioned \c true iff the last partition didn't shuffle elements (i.e., the slice was already
- * partitioned).
+ *                         partitioned).
  */
 template <std::random_access_iterator It>
 void _tbb_pdqsort(tbb::task_group& tasks,
