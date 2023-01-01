@@ -66,7 +66,7 @@ constexpr bool _partial_ins_sort(It begin, It end) {
   uint8_t constexpr MAX_SHIFTS = 8;
   uint8_t limit = MAX_SHIFTS;
   It i = begin;
-  for (++i; i != end; ++i) {
+  while (++i != end) {
     It j1 = i, j2 = i;
     if (*j1 < *--j2) {
       std::iter_value_t<It> tmp{ std::move(*j1) };
@@ -87,7 +87,7 @@ constexpr void ins_sort(R& v) {
   using It = rng::iterator_t<R>;
   It const ib = rng::begin(v), ie = rng::end(v);
   if (ib != ie) [[likely]]
-    for (It i = ib + 1; i != ie; ++i)
+    for (It i = ib; ++i != ie;)
       _sort_left_shift(ib, i);
 }
 
